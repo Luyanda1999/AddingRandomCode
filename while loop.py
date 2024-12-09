@@ -11,6 +11,7 @@ print(names)
 counting = len(names)
 i=0
 
-while i <= counting:
+print(counting)
+while i <= counting-1:
     print(names[i])
     i+=1
