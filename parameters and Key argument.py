@@ -16,3 +16,10 @@ value_a = float(input("First value: "))
 value_b = float(input("Second value: "))
 
 two_values(value_a, value_b)
+
+#square Value
+def square(number):
+    return number * number
+
+result = square(8)
+print(result)
