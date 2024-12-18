@@ -5,7 +5,7 @@ def greet_user(name, surname):#arguements will not run when both values have not
 
 
 print("Start text")
-greet_user("Luyanda", "Ndwandwe")
+greet_user(name = "Luyanda", surname = "Ndwandwe")#keyword arguments define exactly what the is even when switched around
 print("End text")
 
 def two_values(a,b):
