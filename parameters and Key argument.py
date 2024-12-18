@@ -7,3 +7,12 @@ def greet_user(name, surname):#arguements will not run when both values have not
 print("Start text")
 greet_user("Luyanda", "Ndwandwe")
 print("End text")
+
+def two_values(a,b):
+    total = a + b
+    print(total)
+    
+value_a = float(input("First value: "))
+value_b = float(input("Second value: "))
+
+two_values(value_a, value_b)
