@@ -1,10 +1,14 @@
+def emojie(message):
+    words = message.split(" ")
+    emojies = {
+        ":)" : "😃",
+        ":(" : "🥺"
+    }
+    output = ""
+    for word in words:
+        output += emojies.get(word, word) + " "
+    return output
+
 message =  input(">")
-words = message.split(" ")
-emojies = {
-    ":)" : "😃",
-    ":(" : "🥺"
-}
-output = ""
-for word in words:
-    output += emojies.get(word, word) + " "
-print(output)
+
+print(emojie(message))
