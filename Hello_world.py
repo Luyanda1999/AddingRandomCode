@@ -4,3 +4,12 @@ b = int(input("Enter the second number: "))
 
 c = a + b
 print(c)
+
+temperature = 30
+if  temperature >= 25:
+  print("It is hot out there.")
+  print("Drink Water!")
+elif temperature < 25 and temperature >=20:
+  print("It is nice day.")
+else:
+  print("It is cold")
