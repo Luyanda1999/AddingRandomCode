@@ -13,3 +13,7 @@ elif temperature < 25 and temperature >=20:
   print("It is nice day.")
 else:
   print("It is cold")
+
+numbers = [9,5,3,4,8,2]
+for i in range(numbers):
+  print (numbers[i])
