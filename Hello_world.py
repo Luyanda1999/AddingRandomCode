@@ -1,10 +1,14 @@
+#Hello World
 print('Hello, World')
+
+#Calculator Method
 a = int(input("Enter the first number: "))
 b = int(input("Enter the second number: "))
 
 c = a + b
 print(c)
 
+#If Statement Temperature
 temperature = 30
 if  temperature >= 25:
   print("It is hot out there.")
@@ -14,10 +18,12 @@ elif temperature < 25 and temperature >=20:
 else:
   print("It is cold")
 
+#For loop numbers
 numbers = [9,5,3,4,8,2]
 for i in numbers:
   print (i)
 
+#Function Practice
 def hello(name):
   return ("Hello " + name)
 
