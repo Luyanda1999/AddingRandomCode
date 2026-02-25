@@ -21,4 +21,4 @@ for i in numbers:
 def hello(name):
   return ("Hello " + name)
 
-hello("Glen")
+print(hello("Glen"))
