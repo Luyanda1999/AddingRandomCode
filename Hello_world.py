@@ -17,3 +17,8 @@ else:
 numbers = [9,5,3,4,8,2]
 for i in numbers:
   print (i)
+
+def hello(name):
+  return ("Hello " + name)
+
+hello("Glen")
