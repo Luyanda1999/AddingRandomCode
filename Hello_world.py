@@ -27,6 +27,13 @@ counting = 1000000
 for i in range(counting):
     print(i+1)
 
+#While loop
+digit = 50
+i = 0
+while i<= digit:
+    print(i)
+    i+=1
+
 #Function Practice
 def hello(name):
   return ("Hello " + name)
