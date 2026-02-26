@@ -23,6 +23,10 @@ numbers = [9,5,3,4,8,2]
 for i in numbers:
   print (i)
 
+counting = 1000000
+for i in range(counting):
+    print(i+1)
+
 #Function Practice
 def hello(name):
   return ("Hello " + name)
