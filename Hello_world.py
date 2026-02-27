@@ -39,3 +39,12 @@ def hello(name):
   return ("Hello " + name)
 
 print(hello("Glen"))
+
+def totally(a,b):
+    total = a + b
+    return total
+    
+a = int(input("Enter first number: "))
+b = int(input("Enter second number: "))
+
+print("The sum of 2 digits is: " + str(totally(a,b)))
