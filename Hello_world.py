@@ -40,6 +40,7 @@ def hello(name):
 
 print(hello("Glen"))
 
+#Practice sun function
 def totally(a,b):
     total = a + b
     return total
