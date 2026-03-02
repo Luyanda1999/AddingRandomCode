@@ -19,7 +19,7 @@ else:
   print("It is cold")
 
 #For loop numbers
-numbers = [9,5,3,4,8,2]
+numbers = [45,26,48,76,12]
 for i in numbers:
   print (i)
 
