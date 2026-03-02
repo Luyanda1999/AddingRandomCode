@@ -49,3 +49,12 @@ a = int(input("Enter first number: "))
 b = int(input("Enter second number: "))
 
 print("The sum of 2 digits is: " + str(totally(a,b)))
+
+#duplicate remover
+numbers=[2,2,4,6,3,6,1]
+unique=[]
+
+for i in numbers:
+    if i not in unique:
+        unique.append(i)
+print(unique)
