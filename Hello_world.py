@@ -58,3 +58,13 @@ for i in numbers:
     if i not in unique:
         unique.append(i)
 print(unique)
+
+
+class Person:
+    def __init__(self, name):
+        self.name = name
+    def talk(self):
+        print(f"Hello {self.name}")
+
+person = Person(input("Name: "))
+person.talk()
