@@ -59,7 +59,7 @@ for i in numbers:
         unique.append(i)
 print(unique)
 
-
+#class
 class Person:
     def __init__(self, name):
         self.name = name
