@@ -69,4 +69,4 @@ class Person:
 person = Person(input("Name: "))
 person.talk()
 
-#current out of idea on what to say
+#Never mind
