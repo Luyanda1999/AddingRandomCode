@@ -69,4 +69,16 @@ class Person:
 person = Person(input("Name: "))
 person.talk()
 
+#recursion
+def recurse(i):
+    if(i>0):
+        result = i + recurse(i-1)
+        print(result)
+    else:
+        result = 0
+    return result
+    
+print("\n\nRecursion Example Results")
+recurse(6)
+
 #Never mind
