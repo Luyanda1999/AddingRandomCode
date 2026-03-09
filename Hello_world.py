@@ -69,7 +69,7 @@ class Person:
 person = Person(input("Name: "))
 person.talk()
 
-#recursion
+#recursion - DSA
 def recurse(i):
     if(i>0):
         result = i + recurse(i-1)
