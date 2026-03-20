@@ -6,6 +6,7 @@ print(5)
 print(6)
 print(7)
 print(8)
+print(9)
 
 nums = [3,4,5]
 
