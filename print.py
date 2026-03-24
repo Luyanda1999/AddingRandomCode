@@ -29,6 +29,7 @@ for i in num:
     x += num[i-1]
     print(x)
 
+#Failed class... need fixing
 class Calculating:
     def __init__(self , a, b):
         self.a = a
@@ -42,3 +43,5 @@ class Calculating:
         return c
 C1 = Calculating(2, 4)
 print(C1)
+
+
