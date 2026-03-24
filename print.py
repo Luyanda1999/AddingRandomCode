@@ -28,3 +28,17 @@ x = 0
 for i in num:
     x += num[i-1]
     print(x)
+
+class Calculating:
+    def __init__(self , a, b):
+        self.a = a
+        self.b = b
+    
+    def adding():
+        c = a+b
+        return c
+    def multiplying():
+        c = a*b
+        return c
+C1 = Calculating(2, 4)
+print(C1)
