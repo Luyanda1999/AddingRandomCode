@@ -8,6 +8,7 @@ print(7)
 print(8)
 print(9)
 print(10)
+print(range(10))
 
 #old
 nums = [3,4,5]
