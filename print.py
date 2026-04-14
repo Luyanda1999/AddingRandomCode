@@ -19,6 +19,20 @@ print(18)
 print(19)
 print(20)
 
+#library
+age = int(input("Enter your age: "))
+
+status = {
+    (age < 18): "Too Young",
+    (age == 18): "Still too Young",
+    (18 < age <20): "Old enough now",
+    (20 <= age < 40): "Perfect",
+    (age >= 40): "Welcome"
+}[True]
+
+print(status)
+
+
 print(range(10))
 
 #old
