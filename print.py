@@ -70,7 +70,7 @@ class Calculating:
 C1 = Calculating(2, 4)
 print(C1)
 
-
+#Palindrome check
 word = "radar"
 if word == word[::-1]:
     print(f"'{word}' is a palindrome!")
