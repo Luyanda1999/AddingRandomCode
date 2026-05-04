@@ -71,3 +71,10 @@ C1 = Calculating(2, 4)
 print(C1)
 
 
+word = "radar"
+if word == word[::-1]:
+    print(f"'{word}' is a palindrome!")
+else:
+    print(f"'{word}' is not a palindrome.")
+
+
