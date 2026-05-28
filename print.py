@@ -20,7 +20,7 @@
 #print(20)
 #print(21)
 #Sprint(22)
-print(23)
+#print(23)
 print(24)
 print(25)
 print(26)
