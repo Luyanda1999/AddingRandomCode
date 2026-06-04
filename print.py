@@ -28,7 +28,7 @@
 #print(28)
 #print(29)
 #print(30)
-print(31)
+#print(31)
 print(32)
 print(33)
 print(34)
