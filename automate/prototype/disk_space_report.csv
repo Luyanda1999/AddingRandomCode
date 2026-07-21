@@ -1,0 +1,3 @@
+timestamp,computer_name,path,total_gb,used_gb,free_gb,percent_used
+2026-06-19 14:45:24,NFRDPFS,C:\,465.11,50.02,415.08,10.75
+2026-06-23 15:04:04,NFRDPFS,C:\,465.11,56.01,409.1,12.04
