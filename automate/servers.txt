@@ -1,0 +1,6 @@
+# Server list
+# Generated: 2026-07-09 12:39:16.983937
+# Format: IP:PORT or IP
+
+10.0.1.224:5000
+127.0.0.1
