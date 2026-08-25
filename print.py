@@ -76,6 +76,7 @@ print(75)
 print(76)
 print(77)
 print(78)
+print(79)
 
 #library
 age = int(input("Enter your age: "))
