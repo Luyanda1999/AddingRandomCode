@@ -1,4 +1,4 @@
-# enhanced_server.py - Run this on PCs you want to monitor
+# enhanced_server.py - Optimized (GUI compatible)
 import socket
 import json
 import platform
@@ -8,20 +8,23 @@ import subprocess
 import winreg
 import threading
 import shutil
+import zlib
+import time
 from datetime import datetime
 from pathlib import Path
 
 class EnhancedSystemInfoServer:
-    def __init__(self, port=5000):
-        self.host = '0.0.0.0'  # Listen on all interfaces
+    def __init__(self, port=5000, cache_ttl=5):
+        self.host = '0.0.0.0'
         self.port = port
         self.running = True
+        self.cache = {}
+        self.cache_ttl = cache_ttl
         
     def get_local_ips(self):
         """Get all local IP addresses using only built-in libraries"""
         ips = []
         try:
-            # Method 1: Get hostname and resolve
             hostname = socket.gethostname()
             try:
                 for ip in socket.gethostbyname_ex(hostname)[2]:
@@ -30,10 +33,9 @@ class EnhancedSystemInfoServer:
             except:
                 pass
             
-            # Method 2: Use ipconfig on Windows
             if platform.system() == 'Windows':
                 try:
-                    result = subprocess.run(['ipconfig'], capture_output=True, text=True)
+                    result = subprocess.run(['ipconfig'], capture_output=True, text=True, timeout=2)
                     lines = result.stdout.split('\n')
                     for line in lines:
                         if 'IPv4 Address' in line or 'IP Address' in line:
@@ -46,7 +48,7 @@ class EnhancedSystemInfoServer:
                     pass
             else:
                 try:
-                    result = subprocess.run(['ifconfig'], capture_output=True, text=True)
+                    result = subprocess.run(['ifconfig'], capture_output=True, text=True, timeout=2)
                     lines = result.stdout.split('\n')
                     for line in lines:
                         if 'inet ' in line and '127.0.0.1' not in line:
@@ -62,7 +64,6 @@ class EnhancedSystemInfoServer:
         except Exception as e:
             print(f"Warning: Could not get all IPs: {e}")
         
-        # Remove duplicates and filter out invalid IPs
         valid_ips = []
         for ip in set(ips):
             if ip and not ip.startswith('127.') and not ip.startswith('169.254.'):
@@ -76,183 +77,6 @@ class EnhancedSystemInfoServer:
                         pass
         
         return valid_ips if valid_ips else ['localhost']
-    
-    def get_auto_run_info(self):
-        """Get auto-run information (startup items, services, tasks, processes)"""
-        auto_run_data = {
-            "startup_items": [],
-            "running_services": [],
-            "scheduled_tasks": [],
-            "running_processes": []
-        }
-        
-        # Only run on Windows
-        if platform.system() != 'Windows':
-            return auto_run_data
-        
-        # 1. Get startup items from registry
-        try:
-            startup_locations = [
-                (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run"),
-                (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run"),
-                (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
-                (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
-                (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"),
-            ]
-            
-            for hive, path in startup_locations:
-                try:
-                    key = winreg.OpenKey(hive, path, 0, winreg.KEY_READ)
-                    i = 0
-                    while True:
-                        try:
-                            name, value, _ = winreg.EnumValue(key, i)
-                            if isinstance(value, bytes):
-                                value = "<binary data>"
-                            auto_run_data["startup_items"].append({
-                                "name": name,
-                                "path": str(value),
-                                "location": path,
-                                "hive": "HKLM" if hive == winreg.HKEY_LOCAL_MACHINE else "HKCU"
-                            })
-                            i += 1
-                        except WindowsError:
-                            break
-                    winreg.CloseKey(key)
-                except:
-                    pass
-        except:
-            pass
-        
-        # 2. Get startup folder items
-        try:
-            startup_folders = [
-                os.path.join(os.getenv('APPDATA'), r'Microsoft\Windows\Start Menu\Programs\Startup'),
-                os.path.join(os.getenv('PROGRAMDATA'), r'Microsoft\Windows\Start Menu\Programs\Startup'),
-                os.path.join(os.getenv('ALLUSERSPROFILE'), r'Microsoft\Windows\Start Menu\Programs\Startup')
-            ]
-            
-            for folder in startup_folders:
-                if folder and os.path.exists(folder):
-                    for file in os.listdir(folder):
-                        if file.lower().endswith(('.exe', '.lnk', '.bat', '.cmd', '.vbs', '.ps1')):
-                            auto_run_data["startup_items"].append({
-                                "name": file,
-                                "path": os.path.join(folder, file),
-                                "location": "Startup Folder",
-                                "hive": "N/A"
-                            })
-        except:
-            pass
-        
-        # 3. Get running services
-        try:
-            result = subprocess.run(['sc', 'query', 'state=all'], 
-                                  capture_output=True, text=True, encoding='utf-8', errors='ignore')
-            
-            lines = result.stdout.split('\n')
-            current_service = {}
-            
-            for line in lines:
-                line = line.strip()
-                if line.startswith('SERVICE_NAME:'):
-                    if current_service and 'name' in current_service:
-                        status = current_service.get('STATE', '')
-                        status_parts = status.split()
-                        status_text = ' '.join(status_parts[1:]) if len(status_parts) > 1 else status
-                        
-                        if 'RUNNING' in status_text.upper():
-                            auto_run_data["running_services"].append({
-                                "name": current_service.get('name', 'Unknown'),
-                                "status": status_text,
-                                "type": current_service.get('TYPE', 'Unknown')
-                            })
-                    name = line.split(':', 1)[1].strip()
-                    current_service = {'name': name}
-                elif ':' in line and current_service:
-                    key, value = line.split(':', 1)
-                    current_service[key.strip()] = value.strip()
-            
-            if current_service and 'name' in current_service:
-                status = current_service.get('STATE', '')
-                status_parts = status.split()
-                status_text = ' '.join(status_parts[1:]) if len(status_parts) > 1 else status
-                
-                if 'RUNNING' in status_text.upper():
-                    auto_run_data["running_services"].append({
-                        "name": current_service.get('name', 'Unknown'),
-                        "status": status_text,
-                        "type": current_service.get('TYPE', 'Unknown')
-                    })
-        except:
-            pass
-        
-        # 4. Get scheduled tasks (only enabled ones) - Reduce data by limiting
-        try:
-            result = subprocess.run(['schtasks', '/query', '/fo', 'csv', '/v'], 
-                                  capture_output=True, text=True, encoding='utf-8', errors='ignore')
-            
-            lines = result.stdout.split('\n')
-            if len(lines) > 1:
-                headers = self._parse_csv_line(lines[0].strip())
-                count = 0
-                max_tasks = 50  # Limit to 50 tasks to keep data manageable
-                
-                for i in range(1, len(lines)):
-                    if count >= max_tasks:
-                        break
-                    if lines[i].strip():
-                        values = self._parse_csv_line(lines[i].strip())
-                        if len(values) >= len(headers):
-                            task_info = dict(zip(headers, values))
-                            status = task_info.get('Status', '').strip('"')
-                            
-                            if status in ['Ready', 'Running']:
-                                auto_run_data["scheduled_tasks"].append({
-                                    "name": task_info.get('TaskName', 'Unknown').strip('"'),
-                                    "status": status,
-                                    "schedule": task_info.get('Schedule', 'N/A').strip('"')[:50],  # Truncate long schedules
-                                    "last_run": task_info.get('Last Run Time', 'N/A').strip('"'),
-                                    "next_run": task_info.get('Next Run Time', 'N/A').strip('"'),
-                                    "task_path": task_info.get('Task To Run', 'N/A').strip('"')[:100]  # Truncate long paths
-                                })
-                                count += 1
-        except:
-            pass
-        
-        # 5. Get running processes (top 50 to keep data manageable)
-        try:
-            result = subprocess.run(['tasklist', '/v', '/fo', 'csv'], 
-                                  capture_output=True, text=True, encoding='utf-8', errors='ignore')
-            
-            lines = result.stdout.split('\n')
-            if len(lines) > 1:
-                headers = self._parse_csv_line(lines[0].strip())
-                count = 0
-                max_processes = 50  # Limit to 50 processes
-                
-                for i in range(1, len(lines)):
-                    if count >= max_processes:
-                        break
-                    if lines[i].strip():
-                        values = self._parse_csv_line(lines[i].strip())
-                        if len(values) >= len(headers):
-                            proc_info = dict(zip(headers, values))
-                            name = proc_info.get('Image Name', '').strip('"')
-                            
-                            if name and name.lower() not in ['', 'system idle process']:
-                                auto_run_data["running_processes"].append({
-                                    "pid": proc_info.get('PID', 'Unknown').strip('"'),
-                                    "name": name,
-                                    "memory_usage": proc_info.get('Mem Usage', 'N/A').strip('"'),
-                                    "status": proc_info.get('Status', 'Unknown').strip('"'),
-                                    "user": proc_info.get('User Name', 'N/A').strip('"')[:50]  # Truncate long usernames
-                                })
-                                count += 1
-        except:
-            pass
-        
-        return auto_run_data
     
     def _parse_csv_line(self, line):
         """Simple CSV parser for quoted fields"""
@@ -273,6 +97,197 @@ class EnhancedSystemInfoServer:
             result.append(current.strip())
         
         return result
+    
+    def get_auto_run_info(self, include_processes=True, include_services=True, 
+                          include_startup=True, include_tasks=True,
+                          limit_per_section=20):
+        """
+        Get auto-run information - optimized with limits and fast timeouts.
+        Signature kept compatible with original (all params have defaults).
+        """
+        auto_run_data = {
+            "startup_items": [],
+            "running_services": [],
+            "scheduled_tasks": [],
+            "running_processes": []
+        }
+        
+        if platform.system() != 'Windows':
+            return auto_run_data
+        
+        # 1. Startup items from registry (only 2 main locations for speed)
+        if include_startup:
+            try:
+                startup_locations = [
+                    (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run"),
+                ]
+                
+                for hive, path in startup_locations:
+                    if len(auto_run_data["startup_items"]) >= limit_per_section:
+                        break
+                    try:
+                        key = winreg.OpenKey(hive, path, 0, winreg.KEY_READ)
+                        i = 0
+                        while len(auto_run_data["startup_items"]) < limit_per_section:
+                            try:
+                                name, value, _ = winreg.EnumValue(key, i)
+                                if isinstance(value, bytes):
+                                    value = "<binary data>"
+                                auto_run_data["startup_items"].append({
+                                    "name": name,
+                                    "path": str(value)[:150],
+                                    "location": path,
+                                    "hive": "HKLM" if hive == winreg.HKEY_LOCAL_MACHINE else "HKCU"
+                                })
+                                i += 1
+                            except WindowsError:
+                                break
+                        winreg.CloseKey(key)
+                    except:
+                        pass
+            except:
+                pass
+            
+            # Startup folder items
+            try:
+                startup_folders = [
+                    os.path.join(os.getenv('APPDATA', ''), r'Microsoft\Windows\Start Menu\Programs\Startup'),
+                    os.path.join(os.getenv('PROGRAMDATA', ''), r'Microsoft\Windows\Start Menu\Programs\Startup'),
+                ]
+                
+                for folder in startup_folders:
+                    if folder and os.path.exists(folder):
+                        for file in os.listdir(folder):
+                            if len(auto_run_data["startup_items"]) >= limit_per_section:
+                                break
+                            if file.lower().endswith(('.exe', '.lnk', '.bat', '.cmd', '.vbs', '.ps1')):
+                                auto_run_data["startup_items"].append({
+                                    "name": file,
+                                    "path": os.path.join(folder, file),
+                                    "location": "Startup Folder",
+                                    "hive": "N/A"
+                                })
+            except:
+                pass
+        
+        # 2. Running services - use fast query and limit
+        if include_services:
+            try:
+                result = subprocess.run(
+                    ['sc', 'query', 'state=all'],
+                    capture_output=True, text=True,
+                    encoding='utf-8', errors='ignore', timeout=3
+                )
+                
+                lines = result.stdout.split('\n')
+                current_service = {}
+                
+                for line in lines:
+                    if len(auto_run_data["running_services"]) >= limit_per_section:
+                        break
+                    line = line.strip()
+                    if line.startswith('SERVICE_NAME:'):
+                        if current_service and 'name' in current_service:
+                            status = current_service.get('STATE', '')
+                            status_parts = status.split()
+                            status_text = ' '.join(status_parts[1:]) if len(status_parts) > 1 else status
+                            if 'RUNNING' in status_text.upper():
+                                auto_run_data["running_services"].append({
+                                    "name": current_service.get('name', 'Unknown'),
+                                    "status": status_text,
+                                    "type": current_service.get('TYPE', 'Unknown')
+                                })
+                        name = line.split(':', 1)[1].strip()
+                        current_service = {'name': name}
+                    elif ':' in line and current_service:
+                        key, value = line.split(':', 1)
+                        current_service[key.strip()] = value.strip()
+                
+                if (current_service and 'name' in current_service 
+                    and len(auto_run_data["running_services"]) < limit_per_section):
+                    status = current_service.get('STATE', '')
+                    status_parts = status.split()
+                    status_text = ' '.join(status_parts[1:]) if len(status_parts) > 1 else status
+                    if 'RUNNING' in status_text.upper():
+                        auto_run_data["running_services"].append({
+                            "name": current_service.get('name', 'Unknown'),
+                            "status": status_text,
+                            "type": current_service.get('TYPE', 'Unknown')
+                        })
+            except:
+                pass
+        
+        # 3. Scheduled tasks - limited (kept behind flag because it's slow)
+        if include_tasks:
+            try:
+                result = subprocess.run(
+                    ['schtasks', '/query', '/fo', 'csv', '/v'],
+                    capture_output=True, text=True,
+                    encoding='utf-8', errors='ignore', timeout=4
+                )
+                
+                lines = result.stdout.split('\n')
+                if len(lines) > 1:
+                    headers = self._parse_csv_line(lines[0].strip())
+                    count = 0
+                    max_tasks = min(20, limit_per_section)
+                    
+                    for i in range(1, len(lines)):
+                        if count >= max_tasks:
+                            break
+                        if lines[i].strip():
+                            values = self._parse_csv_line(lines[i].strip())
+                            if len(values) >= len(headers):
+                                task_info = dict(zip(headers, values))
+                                status = task_info.get('Status', '').strip('"')
+                                if status in ['Ready', 'Running']:
+                                    auto_run_data["scheduled_tasks"].append({
+                                        "name": task_info.get('TaskName', 'Unknown').strip('"'),
+                                        "status": status,
+                                        "schedule": task_info.get('Schedule', 'N/A').strip('"')[:50],
+                                        "last_run": task_info.get('Last Run Time', 'N/A').strip('"'),
+                                        "next_run": task_info.get('Next Run Time', 'N/A').strip('"'),
+                                        "task_path": task_info.get('Task To Run', 'N/A').strip('"')[:100]
+                                    })
+                                    count += 1
+            except:
+                pass
+        
+        # 4. Running processes - limited and fast
+        if include_processes:
+            try:
+                result = subprocess.run(
+                    ['tasklist', '/fo', 'csv'],
+                    capture_output=True, text=True,
+                    encoding='utf-8', errors='ignore', timeout=3
+                )
+                
+                lines = result.stdout.split('\n')
+                if len(lines) > 1:
+                    count = 0
+                    max_processes = min(20, limit_per_section)
+                    
+                    for i in range(1, len(lines)):
+                        if count >= max_processes:
+                            break
+                        if lines[i].strip():
+                            values = self._parse_csv_line(lines[i].strip())
+                            if len(values) >= 2:
+                                name = values[0].strip('"')
+                                if name and name.lower() not in ['', 'system idle process']:
+                                    auto_run_data["running_processes"].append({
+                                        "pid": values[1].strip('"') if len(values) > 1 else 'Unknown',
+                                        "name": name,
+                                        "memory_usage": values[4].strip('"') if len(values) > 4 else 'N/A',
+                                        "status": "Running",
+                                        "user": "N/A"
+                                    })
+                                    count += 1
+            except:
+                pass
+        
+        return auto_run_data
     
     def get_all_storage_devices(self):
         """Get storage information for all drives"""
@@ -316,10 +331,8 @@ class EnhancedSystemInfoServer:
                         if len(parts) >= 2:
                             device = parts[0]
                             mount_point = parts[1]
-                            
                             if device.startswith('dev') or device.startswith('sys') or device.startswith('proc'):
                                 continue
-                            
                             try:
                                 total, used, free = shutil.disk_usage(mount_point)
                                 if total > 0:
@@ -372,13 +385,8 @@ class EnhancedSystemInfoServer:
         try:
             from ctypes import windll
             drive_types = {
-                0: "Unknown",
-                1: "No Root Directory",
-                2: "Removable",
-                3: "Fixed",
-                4: "Remote",
-                5: "CD-ROM",
-                6: "RAM Disk"
+                0: "Unknown", 1: "No Root", 2: "Removable",
+                3: "Fixed", 4: "Remote", 5: "CD-ROM", 6: "RAM Disk"
             }
             drive_type = windll.kernel32.GetDriveTypeW(drive + '\\')
             return drive_types.get(drive_type, "Unknown")
@@ -420,7 +428,6 @@ class EnhancedSystemInfoServer:
                     total = memoryStatus.ullTotalPhys / (1024**3)
                     available = memoryStatus.ullAvailPhys / (1024**3)
                     used = total - available
-                    
                     return {
                         'total_gb': round(total, 2),
                         'used_gb': round(used, 2),
@@ -431,7 +438,6 @@ class EnhancedSystemInfoServer:
                 try:
                     with open('/proc/meminfo', 'r') as f:
                         lines = f.readlines()
-                    
                     mem_info = {}
                     for line in lines:
                         parts = line.split(':')
@@ -439,11 +445,9 @@ class EnhancedSystemInfoServer:
                             key = parts[0].strip()
                             value = parts[1].strip().split()[0]
                             mem_info[key] = int(value) * 1024
-                    
                     total = mem_info.get('MemTotal', 0) / (1024**3)
                     available = mem_info.get('MemAvailable', mem_info.get('MemFree', 0)) / (1024**3)
                     used = total - available
-                    
                     return {
                         'total_gb': round(total, 2),
                         'used_gb': round(used, 2),
@@ -465,8 +469,10 @@ class EnhancedSystemInfoServer:
             
             if platform.system() == 'Windows':
                 try:
-                    result = subprocess.run(['wmic', 'cpu', 'get', 'loadpercentage'], 
-                                          capture_output=True, text=True)
+                    result = subprocess.run(
+                        ['wmic', 'cpu', 'get', 'loadpercentage'],
+                        capture_output=True, text=True, timeout=2
+                    )
                     lines = result.stdout.strip().split('\n')
                     if len(lines) > 1:
                         for line in reversed(lines):
@@ -481,30 +487,63 @@ class EnhancedSystemInfoServer:
                         line = f.readline()
                         parts = line.split()
                         if len(parts) > 4:
-                            user = int(parts[1])
-                            nice = int(parts[2])
-                            system = int(parts[3])
-                            idle = int(parts[4])
+                            user = int(parts[1]); nice = int(parts[2])
+                            system = int(parts[3]); idle = int(parts[4])
                             total = user + nice + system + idle
                             cpu_percent = round(((total - idle) / total) * 100, 1) if total > 0 else 0
                 except:
                     pass
             
-            return {
-                'percent': cpu_percent,
-                'cores': cpu_count
-            }
+            return {'percent': cpu_percent, 'cores': cpu_count}
         except:
             return {'percent': 0, 'cores': 0}
     
-    def get_system_info(self):
-        """Collect all system information including auto-run data"""
+    def get_system_info(self, request_params=None):
+        """
+        Collect all system information.
+        request_params (optional dict) allows client to request selective data.
+        """
+        # Build cache key from params
+        cache_key = json.dumps(request_params or {}, sort_keys=True)
+        
+        now = time.time()
+        if cache_key in self.cache:
+            cached_data, timestamp = self.cache[cache_key]
+            if now - timestamp < self.cache_ttl:
+                return cached_data
+        
+        # Parse request params (defaults keep original behavior for GUI compat)
+        quick_mode = False
+        include_processes = True
+        include_services = True
+        include_startup = True
+        include_tasks = True
+        limit_per_section = 20
+        
+        if request_params:
+            quick_mode = request_params.get('quick', False)
+            include_processes = request_params.get('include_processes', not quick_mode)
+            include_services = request_params.get('include_services', not quick_mode)
+            include_startup = request_params.get('include_startup', not quick_mode)
+            include_tasks = request_params.get('include_tasks', not quick_mode)
+            limit_per_section = request_params.get('limit', 20)
+        
         try:
             storage = self.get_all_storage_devices()
             memory = self.get_memory_info()
             cpu = self.get_cpu_info()
-            auto_run = self.get_auto_run_info() if platform.system() == 'Windows' else {}
             local_ips = self.get_local_ips()
+            
+            if platform.system() == 'Windows':
+                auto_run = self.get_auto_run_info(
+                    include_processes=include_processes,
+                    include_services=include_services,
+                    include_startup=include_startup,
+                    include_tasks=include_tasks,
+                    limit_per_section=limit_per_section
+                )
+            else:
+                auto_run = {}
             
             info = {
                 'device_name': platform.node(),
@@ -521,6 +560,7 @@ class EnhancedSystemInfoServer:
                 'status': 'success'
             }
             
+            self.cache[cache_key] = (info, now)
             return info
             
         except Exception as e:
@@ -531,38 +571,66 @@ class EnhancedSystemInfoServer:
             }
     
     def send_large_data(self, client_socket, data):
-        """Send large data in chunks"""
+        """
+        Send data - now uses zlib compression with a 4-byte size header.
+        Kept method name for compatibility.
+        """
         try:
-            # Convert to JSON
             json_data = json.dumps(data)
             encoded_data = json_data.encode('utf-8')
-            total_size = len(encoded_data)
             
-            # Send data in chunks
-            chunk_size = 8192  # 8KB chunks
-            sent = 0
+            # Compress with fast level
+            compressed_data = zlib.compress(encoded_data, level=1)
             
-            while sent < total_size:
-                chunk = encoded_data[sent:sent + chunk_size]
-                sent += client_socket.send(chunk)
-            
+            # 4-byte size header (big-endian)
+            client_socket.sendall(len(compressed_data).to_bytes(4, 'big'))
+            client_socket.sendall(compressed_data)
             return True
         except Exception as e:
             print(f"Error sending data: {e}")
             return False
     
+    def _read_request_params(self, client_socket):
+        """
+        Try to read optional JSON params from client (newline-terminated).
+        Returns {} if nothing sent (backward compatible with old clients).
+        """
+        try:
+            client_socket.settimeout(1.5)
+            data = b''
+            while True:
+                chunk = client_socket.recv(1)
+                if not chunk:
+                    break
+                if chunk == b'\n':
+                    break
+                data += chunk
+                if len(data) > 2048:
+                    break
+            
+            if data:
+                try:
+                    return json.loads(data.decode('utf-8'))
+                except:
+                    return {}
+            return {}
+        except:
+            return {}
+    
     def handle_client(self, client_socket, address):
         """Handle incoming client connections"""
         try:
             print(f"Connection from {address}")
-            system_info = self.get_system_info()
             
-            # Get the data size for logging
+            # Read optional request params (safe - returns {} on timeout)
+            request_params = self._read_request_params(client_socket)
+            
+            system_info = self.get_system_info(request_params)
+            
             json_str = json.dumps(system_info)
             data_size = len(json_str.encode('utf-8'))
             print(f"Data size: {data_size} bytes ({data_size/1024:.1f} KB)")
             
-            # Send the data
             if self.send_large_data(client_socket, system_info):
                 print(f"Data sent successfully to {address}")
             else:
@@ -582,9 +650,11 @@ class EnhancedSystemInfoServer:
             server_socket.listen(5)
             
             print("="*70)
-            print(f"🚀 ENHANCED SYSTEM INFO SERVER")
+            print(f"🚀 ENHANCED SYSTEM INFO SERVER (Optimized)")
             print("="*70)
             print(f"📡 Server listening on port: {self.port}")
+            print(f"⚡ Compression: Enabled (zlib)")
+            print(f"💾 Cache TTL: {self.cache_ttl}s")
             print(f"💻 Device name: {platform.node()}")
             print()
             print("📌 Connect using these IP addresses:")
@@ -638,10 +708,10 @@ def main():
     
     parser = argparse.ArgumentParser(description='Enhanced System Info Server')
     parser.add_argument('-p', '--port', type=int, default=5000, help='Port to listen on (default: 5000)')
+    parser.add_argument('-c', '--cache', type=int, default=5, help='Cache TTL in seconds (default: 5)')
     
     args = parser.parse_args()
     
-    # Check if port is available
     try:
         test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         test_socket.bind(('localhost', args.port))
@@ -650,7 +720,7 @@ def main():
         print(f"❌ Port {args.port} is already in use. Please change the port number.")
         sys.exit(1)
     
-    server = EnhancedSystemInfoServer(port=args.port)
+    server = EnhancedSystemInfoServer(port=args.port, cache_ttl=args.cache)
     try:
         server.start_server()
     except KeyboardInterrupt:

@@ -1,46 +1,70 @@
-# enhanced_client_continuous.py - Runs continuously in background
+# enhanced_client_continuous.py - Optimized (GUI compatible)
 import socket
 import json
 import time
+import zlib
 import argparse
+import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class EnhancedContinuousClient:
-    def __init__(self, timeout=30, max_workers=5):
+    def __init__(self, timeout=30, max_workers=5, quick_mode=None):
         self.timeout = timeout
         self.max_workers = max_workers
         self.running = True
-        
+        if quick_mode is None:
+            self.quick_mode = timeout <= 15
+        else:
+            self.quick_mode = quick_mode
+    
     def recv_all(self, sock):
-        """Receive all data from socket with proper handling"""
-        data = b''
+        """Receive compressed data (4-byte header + zlib). Backward-compatible fallback."""
         sock.settimeout(self.timeout)
         
-        while True:
-            try:
-                chunk = sock.recv(8192)
+        try:
+            header = b''
+            while len(header) < 4:
+                chunk = sock.recv(4 - len(header))
+                if not chunk:
+                    return b''
+                header += chunk
+            
+            data_size = int.from_bytes(header, 'big')
+            
+            if data_size <= 0 or data_size > 100 * 1024 * 1024:
+                data = header
+                while True:
+                    try:
+                        chunk = sock.recv(8192)
+                        if not chunk:
+                            break
+                        data += chunk
+                        try:
+                            json.loads(data.decode('utf-8'))
+                            return data
+                        except:
+                            continue
+                    except socket.timeout:
+                        break
+                return data
+            
+            compressed = b''
+            while len(compressed) < data_size:
+                chunk = sock.recv(min(8192, data_size - len(compressed)))
                 if not chunk:
                     break
-                data += chunk
-                
-                # Try to see if we have complete JSON
-                try:
-                    json.loads(data.decode('utf-8'))
-                    break
-                except:
-                    continue
-                    
-            except socket.timeout:
-                if data:
-                    try:
-                        json.loads(data.decode('utf-8'))
-                        break
-                    except:
-                        pass
-                raise
-                
-        return data
+                compressed += chunk
+            
+            try:
+                return zlib.decompress(compressed)
+            except zlib.error:
+                full = header + compressed
+                return full
+        except socket.timeout:
+            raise
+        except Exception:
+            raise
     
     def query_single_server(self, server_string):
         """Query a single server"""
@@ -57,16 +81,27 @@ class EnhancedContinuousClient:
             client_socket.settimeout(self.timeout)
             client_socket.connect((host, port))
             
+            # Send query params
+            params = {
+                'quick': self.quick_mode,
+                'include_processes': not self.quick_mode,
+                'include_services': not self.quick_mode,
+                'include_startup': not self.quick_mode,
+                'include_tasks': False,
+                'limit': 20
+            }
+            try:
+                client_socket.sendall((json.dumps(params) + '\n').encode('utf-8'))
+            except:
+                pass
+            
             data = self.recv_all(client_socket)
             client_socket.close()
             
             if not data:
                 return {
-                    'server': server_string,
-                    'host': host,
-                    'port': port,
-                    'status': 'error',
-                    'error': 'No data received',
+                    'server': server_string, 'host': host, 'port': port,
+                    'status': 'error', 'error': 'No data received',
                     'response_time': round(time.time() - start_time, 2)
                 }
             
@@ -75,48 +110,33 @@ class EnhancedContinuousClient:
                 info = json.loads(decoded_data)
                 
                 return {
-                    'server': server_string,
-                    'host': host,
-                    'port': port,
-                    'status': 'success',
-                    'data': info,
+                    'server': server_string, 'host': host, 'port': port,
+                    'status': 'success', 'data': info,
                     'response_time': round(time.time() - start_time, 2)
                 }
             except json.JSONDecodeError as e:
                 return {
-                    'server': server_string,
-                    'host': host,
-                    'port': port,
-                    'status': 'error',
-                    'error': f'Invalid JSON: {str(e)}',
+                    'server': server_string, 'host': host, 'port': port,
+                    'status': 'error', 'error': f'Invalid JSON: {str(e)}',
                     'response_time': round(time.time() - start_time, 2)
                 }
                 
         except socket.timeout:
             return {
-                'server': server_string,
-                'host': host,
-                'port': port,
-                'status': 'error',
-                'error': 'Connection timeout',
+                'server': server_string, 'host': host, 'port': port,
+                'status': 'error', 'error': 'Connection timeout',
                 'response_time': round(time.time() - start_time, 2)
             }
         except ConnectionRefusedError:
             return {
-                'server': server_string,
-                'host': host,
-                'port': port,
-                'status': 'error',
-                'error': 'Connection refused',
+                'server': server_string, 'host': host, 'port': port,
+                'status': 'error', 'error': 'Connection refused',
                 'response_time': round(time.time() - start_time, 2)
             }
         except Exception as e:
             return {
-                'server': server_string,
-                'host': host,
-                'port': port,
-                'status': 'error',
-                'error': str(e),
+                'server': server_string, 'host': host, 'port': port,
+                'status': 'error', 'error': str(e),
                 'response_time': round(time.time() - start_time, 2)
             }
     
@@ -162,7 +182,6 @@ class EnhancedContinuousClient:
                     f.write(f"  Device Name: {info.get('device_name', 'N/A')}\n")
                     f.write(f"  OS: {info.get('os', 'N/A')} {info.get('os_version', '')}\n")
                     
-                    # Storage/Drives
                     storage = info.get('storage', {})
                     devices = storage.get('devices', [])
                     
@@ -178,9 +197,7 @@ class EnhancedContinuousClient:
                             used = device.get('used_gb', 0)
                             free = device.get('free_gb', 0)
                             percent = device.get('usage_percent', 0)
-                            
                             bar = self.create_bar(percent, 20)
-                            
                             f.write(f"  {drive:<12} {drive_type:<12} {total:<12.2f} {used:<12.2f} {free:<12.2f} {percent:>5.1f}% {bar}\n")
                         
                         f.write(f"\n  📊 OVERALL STORAGE:\n")
@@ -188,20 +205,15 @@ class EnhancedContinuousClient:
                         f.write(f"  Used:  {storage.get('used_gb', 0):.2f} GB ({storage.get('usage_percent', 0):.1f}%)\n")
                         f.write(f"  Free:  {storage.get('free_gb', 0):.2f} GB\n")
                     
-                    # Auto-run information
                     auto_run = info.get('auto_run', {})
                     if auto_run:
                         f.write(f"\n  🔍 AUTO-RUN INFORMATION:\n")
-                        
                         startup_items = auto_run.get('startup_items', [])
                         f.write(f"  • Startup Items: {len(startup_items)}\n")
-                        
                         services = auto_run.get('running_services', [])
                         f.write(f"  • Running Services: {len(services)}\n")
-                        
                         tasks = auto_run.get('scheduled_tasks', [])
                         f.write(f"  • Scheduled Tasks: {len(tasks)}\n")
-                        
                         processes = auto_run.get('running_processes', [])
                         f.write(f"  • Running Processes: {len(processes)}\n")
                     
@@ -217,7 +229,6 @@ class EnhancedContinuousClient:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Press Ctrl+C to stop")
         print("="*70)
         
-        # Format servers
         formatted_servers = []
         for server in servers:
             if ':' not in server:
@@ -231,7 +242,6 @@ class EnhancedContinuousClient:
                 iteration += 1
                 print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Iteration #{iteration} starting...")
                 
-                # Query all servers in parallel
                 results = []
                 with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     future_to_server = {
@@ -245,16 +255,13 @@ class EnhancedContinuousClient:
                         status = '✅' if result['status'] == 'success' else '❌'
                         print(f"  {status} {result['server']} ({result.get('response_time', 0):.2f}s)")
                 
-                # Save results
                 log_file = self.save_results(results, log_dir)
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Iteration #{iteration} completed. Log: {log_file}")
                 
-                # Summary
                 success = len([r for r in results if r['status'] == 'success'])
                 errors = len([r for r in results if r['status'] == 'error'])
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Summary: {success} successful, {errors} failed")
                 
-                # Wait for next interval
                 if self.running:
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] Waiting {interval} seconds until next check...")
                     for _ in range(interval):
@@ -277,14 +284,14 @@ def main():
     parser = argparse.ArgumentParser(description='Continuous system monitoring client')
     parser.add_argument('servers', nargs='+', help='Server addresses (IP:PORT or just IP)')
     parser.add_argument('-i', '--interval', type=int, default=300, help='Check interval in seconds (default: 300)')
-    parser.add_argument('-t', '--timeout', type=int, default=30, help='Timeout in seconds (default: 30)')
-    parser.add_argument('-w', '--workers', type=int, default=5, help='Max concurrent workers (default: 5)')
+    parser.add_argument('-t', '--timeout', type=int, default=10, help='Timeout in seconds (default: 10)')
+    parser.add_argument('-w', '--workers', type=int, default=10, help='Max concurrent workers (default: 10)')
     parser.add_argument('-l', '--log-dir', type=str, default='.', help='Log directory (default: current)')
     parser.add_argument('-f', '--file', type=str, help='Read servers from file')
+    parser.add_argument('-d', '--detailed', action='store_true', help='Detailed mode (slower, more data)')
     
     args = parser.parse_args()
     
-    # Get servers
     servers = []
     if args.file:
         try:
@@ -303,13 +310,14 @@ def main():
         print("❌ No servers specified")
         return
     
-    # Create log directory if it doesn't exist
-    import os
     if args.log_dir != '.':
         os.makedirs(args.log_dir, exist_ok=True)
     
-    # Start continuous monitoring
-    client = EnhancedContinuousClient(timeout=args.timeout, max_workers=args.workers)
+    client = EnhancedContinuousClient(
+        timeout=args.timeout,
+        max_workers=args.workers,
+        quick_mode=(False if args.detailed else None)
+    )
     
     try:
         client.run_continuous(servers, interval=args.interval, log_dir=args.log_dir)
