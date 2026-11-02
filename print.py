@@ -67,7 +67,7 @@
 #print(67)
 #print(68)
 #print(69)
-print(70)
+#print(70)
 print(71)
 print(72)
 print(73)
